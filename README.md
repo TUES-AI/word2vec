@@ -1,4 +1,4 @@
-# Word2Vec Challenge
+# [Word2Vec Challenge](https://tues-ai.github.io/word2vec/)
 
 Student repo for CBOW and Skip-gram Word2Vec with a GitHub Pages leaderboard.
 
