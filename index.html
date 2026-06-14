@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Word2Vec Leaderboard</title>
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #fff; color: #111827; }
+    main { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 36px 0 56px; }
+    .hero { padding: 24px 0 18px; border-bottom: 1px solid #e5e7eb; }
+    h1 { margin: 0 0 10px; font-size: clamp(2rem, 5vw, 3.5rem); line-height: 1; letter-spacing: -0.05em; }
+    h1 a { color: inherit; text-decoration: none; }
+    h1 a:hover { text-decoration: underline; }
+    p { color: #4b5563; }
+    code { background: #f3f4f6; padding: 0.15rem 0.35rem; border-radius: 0.35rem; }
+    .status { display: inline-flex; align-items: center; gap: 8px; margin-top: 8px; padding: 7px 11px; border-radius: 999px; background: #f9fafb; border: 1px solid #e5e7eb; font-weight: 700; color: #374151; }
+    .dot { width: 9px; height: 9px; border-radius: 999px; background: #f59e0b; }
+    .online .dot { background: #22c55e; }
+    .offline .dot { background: #f97316; }
+    .error .dot { background: #ef4444; }
+    .boards { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-top: 26px; }
+    .panel { min-width: 0; }
+    .board { display: grid; gap: 8px; }
+    .entry { display: grid; grid-template-columns: 44px minmax(90px, 1fr) minmax(120px, 1.3fr) 80px 72px; gap: 10px; align-items: center; padding: 12px 0; border-bottom: 1px solid #f1f5f9; }
+    .rank { font-weight: 900; font-size: 1.05rem; color: #6b7280; }
+    .name { font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bar-wrap { height: 14px; border-radius: 999px; overflow: hidden; background: #eef2f7; }
+    .bar { height: 100%; border-radius: inherit; width: 0; min-width: 3px; transition: width 0.7s ease; }
+    .score, .loss { text-align: right; font-variant-numeric: tabular-nums; font-weight: 900; }
+    .loss { color: #4b5563; font-weight: 700; }
+    .muted { color: #6b7280; }
+    @media (max-width: 900px) {
+      .boards { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 560px) {
+      .entry { grid-template-columns: 38px 1fr 70px; }
+      .bar-wrap, .loss { grid-column: 2 / 4; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <h1><a href="https://github.com/TUES-AI/word2vec">Word2Vec Leaderboard</a></h1>
+      <p>Two boards: CBOW predicts the center word from context; Skip-gram predicts context from the center word.</p>
+      <div id="status" class="status"><span class="dot"></span><span>Loading leaderboard...</span></div>
+    </section>
+
+    <section class="boards">
+      <div class="panel">
+        <h2>CBOW</h2>
+        <div id="cbow-board" class="board"><p class="muted">Loading...</p></div>
+      </div>
+      <div class="panel">
+        <h2>Skip-gram</h2>
+        <div id="skipgram-board" class="board"><p class="muted">Loading...</p></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const statusEl = document.getElementById("status");
+    const boards = {
+      cbow: document.getElementById("cbow-board"),
+      skipgram: document.getElementById("skipgram-board"),
+    };
+
+    function setStatus(kind, text) {
+      statusEl.className = "status " + kind;
+      statusEl.querySelector("span:last-child").textContent = text;
+    }
+
+    function fallbackGradient(name) {
+      let hash = 0;
+      for (let i = 0; i < name.length; i++) hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
+      const hue = Math.abs(hash) % 360;
+      return `linear-gradient(90deg, hsl(${hue}, 75%, 52%), hsl(${(hue + 42) % 360}, 75%, 62%))`;
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>'"]/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;","\"":"&quot;"}[char]));
+    }
+
+    function rowHtml(row) {
+      const percent = Math.max(0, Math.min(100, row.accuracy * 100));
+      const barPercent = Math.max(3, percent);
+      const safeName = escapeHtml(row.name);
+      const loss = Number.isFinite(row.loss) ? row.loss.toFixed(3) : "—";
+      return `
+        <div class="entry">
+          <div class="rank">#${row.rank}</div>
+          <div class="name" title="${safeName}">${safeName}</div>
+          <div class="bar-wrap"><div class="bar" style="width:${barPercent.toFixed(2)}%; background:${row.gradient || fallbackGradient(row.name)}"></div></div>
+          <div class="score">${percent.toFixed(2)}%</div>
+          <div class="loss">${loss}</div>
+        </div>`;
+    }
+
+    function renderBoard(model, rows) {
+      boards[model].innerHTML = rows && rows.length ? rows.map(rowHtml).join("") : `<p class="muted">No submissions yet.</p>`;
+    }
+
+    function render(data) {
+      const grouped = data.leaderboards || data;
+      renderBoard("cbow", grouped.cbow || []);
+      renderBoard("skipgram", grouped.skipgram || []);
+    }
+
+    async function main() {
+      const current = await fetch("server-url/current.txt?ts=" + Date.now(), {cache: "no-store"}).then(r => r.text());
+      const serverUrl = current.trim();
+      if (!serverUrl) {
+        setStatus("offline", "Backend is sleeping");
+        boards.cbow.innerHTML = `<p class="muted">Run the backend tunnel to show live results here.</p>`;
+        boards.skipgram.innerHTML = `<p class="muted">Run the backend tunnel to show live results here.</p>`;
+        return;
+      }
+      setStatus("online", "Backend online");
+      const data = await fetch(serverUrl + "/api/leaderboard?ts=" + Date.now(), {cache: "no-store"}).then(r => r.json());
+      render(data);
+    }
+
+    main().catch(error => {
+      setStatus("error", "Could not load leaderboard");
+      boards.cbow.innerHTML = `<p class="muted">${escapeHtml(error.message)}</p>`;
+      boards.skipgram.innerHTML = `<p class="muted">${escapeHtml(error.message)}</p>`;
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Word2Vec leaderboard server URL</title>
+  <style>
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; line-height: 1.5; }
+    code { background: #f4f4f5; padding: .15rem .35rem; border-radius: .35rem; }
+  </style>
+</head>
+<body>
+  <h1>Leaderboard server</h1>
+  <p id="status">Checking tunnel...</p>
+  <script>
+    (async () => {
+      const status = document.getElementById("status");
+      const text = await fetch("current.txt?ts=" + Date.now(), {cache: "no-store"}).then(r => r.text());
+      const url = text.trim();
+      if (!url) {
+        status.innerHTML = "Server is sleeping 💤<br>Run <code>../word2vec-Leaderboard-Server/dev_tunnel.py</code> to publish a live Cloudflare tunnel.";
+        return;
+      }
+      if (!/^https:\/\//.test(url)) throw new Error("current.txt must contain an https:// URL");
+      status.textContent = "Redirecting to " + url + " ...";
+      location.replace(url);
+    })().catch(error => {
+      document.getElementById("status").textContent = "Redirect failed: " + error.message;
+    });
+  </script>
+</body>
+</html>
