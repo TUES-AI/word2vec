@@ -21,9 +21,19 @@
     .boards { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-top: 26px; }
     .panel { min-width: 0; }
     .board { display: grid; gap: 8px; }
-    .entry { display: grid; grid-template-columns: 44px minmax(90px, 1fr) minmax(120px, 1.3fr) 80px 72px; gap: 10px; align-items: center; padding: 12px 0; border-bottom: 1px solid #f1f5f9; }
+    .entry { border-bottom: 1px solid #f1f5f9; }
+    .row { display: grid; grid-template-columns: 44px minmax(90px, 1fr) minmax(120px, 1.3fr) 80px 72px; gap: 10px; align-items: center; padding: 12px 0; }
+    .run-list { display: none; margin: 0 0 8px 44px; padding-left: 14px; border-left: 2px solid #e5e7eb; }
+    .entry.open .run-list { display: block; }
+    .run-row { padding: 8px 0; color: #4b5563; font-size: 0.94rem; }
     .rank { font-weight: 900; font-size: 1.05rem; color: #6b7280; }
     .name { font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .name-line { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+    .name-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .run-count { color: #6b7280; font-weight: 600; }
+    .toggle { width: 22px; height: 22px; border: 1px solid #d1d5db; border-radius: 999px; background: #fff; color: #374151; cursor: pointer; line-height: 18px; padding: 0; font-weight: 900; }
+    .toggle:hover { background: #f9fafb; }
+    .toggle-spacer { display: inline-block; width: 22px; }
     .bar-wrap { height: 14px; border-radius: 999px; overflow: hidden; background: #eef2f7; }
     .bar { height: 100%; border-radius: inherit; width: 0; min-width: 3px; transition: width 0.7s ease; }
     .score, .loss { text-align: right; font-variant-numeric: tabular-nums; font-weight: 900; }
@@ -33,8 +43,9 @@
       .boards { grid-template-columns: 1fr; }
     }
     @media (max-width: 560px) {
-      .entry { grid-template-columns: 38px 1fr 70px; }
+      .row { grid-template-columns: 38px 1fr 70px; }
       .bar-wrap, .loss { grid-column: 2 / 4; }
+      .run-list { margin-left: 38px; }
     }
   </style>
 </head>
@@ -81,15 +92,22 @@
       return String(value).replace(/[&<>'"]/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;","\"":"&quot;"}[char]));
     }
 
-    function rowHtml(row) {
+    function rowHtml(row, index, isRun=false) {
+      const rank = isRun ? (row.run_rank || index + 1) : (row.rank || index + 1);
+      const rankText = isRun ? `${rank}.` : `#${rank}`;
       const percent = Math.max(0, Math.min(100, row.accuracy * 100));
       const barPercent = Math.max(3, percent);
       const safeName = escapeHtml(row.name);
       const loss = Number.isFinite(row.loss) ? row.loss.toFixed(3) : "—";
+      const hasRuns = !isRun && row.runs && row.runs.length;
+      const toggle = hasRuns ? `<button class="toggle" type="button" aria-label="show runs">▸</button>` : `<span class="toggle-spacer"></span>`;
+      const runCount = hasRuns ? `<span class="run-count">(${row.runs.length} runs)</span>` : "";
       return `
-        <div class="entry">
-          <div class="rank">#${row.rank}</div>
-          <div class="name" title="${safeName}">${safeName}</div>
+        <div class="row ${isRun ? "run-row" : ""}">
+          <div class="rank">${rankText}</div>
+          <div class="name" title="${safeName}">
+            <span class="name-line">${toggle}<span class="name-text">${safeName}</span>${runCount}</span>
+          </div>
           <div class="bar-wrap"><div class="bar" style="width:${barPercent.toFixed(2)}%; background:${row.gradient || fallbackGradient(row.name)}"></div></div>
           <div class="score">${percent.toFixed(2)}%</div>
           <div class="loss">${loss}</div>
@@ -97,7 +115,25 @@
     }
 
     function renderBoard(model, rows) {
-      boards[model].innerHTML = rows && rows.length ? rows.map(rowHtml).join("") : `<p class="muted">No submissions yet.</p>`;
+      if (!rows || !rows.length) {
+        boards[model].innerHTML = `<p class="muted">No submissions yet.</p>`;
+        return;
+      }
+      boards[model].innerHTML = rows.map((row, index) => {
+        const runList = row.runs && row.runs.length
+          ? `<div class="run-list">${row.runs.map((run, runIndex) => rowHtml(run, runIndex, true)).join("")}</div>`
+          : "";
+        return `<div class="entry">${rowHtml(row, index)}${runList}</div>`;
+      }).join("");
+
+      boards[model].querySelectorAll(".toggle").forEach(button => {
+        button.addEventListener("click", () => {
+          const entry = button.closest(".entry");
+          const opened = entry.classList.toggle("open");
+          button.textContent = opened ? "▾" : "▸";
+          button.setAttribute("aria-label", opened ? "hide runs" : "show runs");
+        });
+      });
     }
 
     function render(data) {
